@@ -367,7 +367,7 @@ class TokenDataset(Dataset):
         else: 
             label_on = False
 
-        if os.path.exists(cached_features_file):
+        if False and os.path.exists(cached_features_file):
             logger.info("Loading features from cached file %s", cached_features_file)
             with open(cached_features_file, 'r') as handle:
                 self.examples = json.load(handle)

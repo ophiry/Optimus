@@ -16,7 +16,13 @@
 # limitations under the License.
 """ Conditional text generation with the auto-regressive models of the library (GPT/GPT-2/Transformer-XL/XLNet)
 """
-from __future__ import absolute_import, division, print_function, unicode_literals
+
+import sys
+import os
+sys.path.append(os.path.expanduser('~/dev/Optimus/code'))
+
+
+# from __future__ import absolute_import, division, print_function, unicode_literals
 
 import argparse
 import glob
@@ -319,7 +325,7 @@ def calc_interpolate(model_vae, eval_dataloader, encoder_tokenizer, decoder_toke
     count = 0
     latent_codes = []
     sample_interval = 0
-    for batch in tqdm(eval_dataloader, desc="Evaluating interpolation"):
+    for idx, batch in tqdm(enumerate(eval_dataloader), desc="Evaluating interpolation"):
         # pdb.set_trace()
         x0, x1, x_lengths = batch
 
@@ -332,6 +338,7 @@ def calc_interpolate(model_vae, eval_dataloader, encoder_tokenizer, decoder_toke
         with torch.no_grad():
             if sample_interval == 0 or sample_interval == args.total_sents:
                 text_x0 = encoder_tokenizer.decode(x0[0,:x_lengths[0,0]].tolist(), clean_up_tokenization_spaces=True)[0]
+                logger.info({'src': idx, 'text': text_x0})
                 pooled_hidden_fea = model_vae.encoder(x0, attention_mask=(x0 > 0).float())[1]
     
                 # Connect hidden feature to the latent space
@@ -356,25 +363,29 @@ def calc_interpolate(model_vae, eval_dataloader, encoder_tokenizer, decoder_toke
     result = defaultdict(str)
     latent_codes_interpolation = []
     num_steps = args.num_interpolation_steps
-    for step in range(num_steps+1):
-        latent_z = latent_codes[0] + (latent_codes[1] - latent_codes[0]) * step * 1.0/num_steps
+    for idx in tqdm(range(len(latent_codes)-1)):
+        # log the original sentence
+        # logger.info({'sentence': idx, 'text': })
+        for step in tqdm(range(num_steps+1)):
+            latent_z = latent_codes[idx] + (latent_codes[idx+1] - latent_codes[idx]) * step * 1.0/num_steps
 
-        past = latent_z
-        out = sample_sequence_conditional(
-            model=model_vae.decoder,
-            context=context_tokens,
-            past=past,
-            length=x_lengths[0,1], # Chunyuan: Fix length; or use <EOS> to complete a sentence
-            temperature=args.temperature,
-            top_k=args.top_k,
-            top_p=args.top_p,
-            device=args.device,
-            decoder_tokenizer = decoder_tokenizer
-        )
-        text_x1 = decoder_tokenizer.decode(out[0,:].tolist(), clean_up_tokenization_spaces=True)
-        text_x1 = text_x1.split()[1:-1]
-        text_x1 = ' '.join(text_x1) 
-        result[step] = text_x1
+            past = latent_z
+            out = sample_sequence_conditional(
+                model=model_vae.decoder,
+                context=context_tokens,
+                past=past,
+                length=x_lengths[0,1], # Chunyuan: Fix length; or use <EOS> to complete a sentence
+                temperature=args.temperature,
+                top_k=args.top_k,
+                top_p=args.top_p,
+                device=args.device,
+                decoder_tokenizer = decoder_tokenizer
+            )
+            text_x1 = decoder_tokenizer.decode(out[0,:].tolist(), clean_up_tokenization_spaces=True)
+            logger.info({'src': idx, 'dst': idx+1, 'step': step, 'text': text_x1})
+            # text_x1 = text_x1.split()[1:-1]
+            # text_x1 = ' '.join(text_x1)
+            # result[(idx, step)] = text_x1
 
     return result
 
@@ -538,7 +549,7 @@ def main():
 
     # Load full model
     output_full_dir    = os.path.join(args.checkpoint_dir, 'checkpoint-full-{}'.format(global_step)) 
-    checkpoint = torch.load(os.path.join(output_full_dir, 'training.bin'))
+    checkpoint = torch.load(os.path.join(output_full_dir, 'training.bin'), map_location=torch.device('cpu'))
 
     # Chunyuan: Add Padding token to GPT2
     special_tokens_dict = {'pad_token': '<PAD>', 'bos_token': '<BOS>', 'eos_token': '<EOS>'}

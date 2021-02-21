@@ -6,3 +6,6 @@ output/*
 code/pytorch_transformers/__pycache__/*
 code/examples/big_ae/modules/encoders/__pycache__/*
 
+*.pyc
+__pycache__
+.idea
